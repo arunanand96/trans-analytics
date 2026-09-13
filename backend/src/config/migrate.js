@@ -12,6 +12,11 @@ const pool = new Pool({
 });
 
 async function migrate() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set. Check that it is linked in Railway/Render variables.');
+  }
+  console.log('Connecting with DATABASE_URL host:', new URL(process.env.DATABASE_URL).hostname);
+
   const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   console.log('Applying schema.sql ...');
   await pool.query(sql);
@@ -20,6 +25,10 @@ async function migrate() {
 }
 
 migrate().catch((err) => {
-  console.error('❌ Migration failed:', err.message);
+  console.error('❌ Migration failed. Full error details below:');
+  console.error('Error object:', err);
+  console.error('Message:', err && err.message);
+  console.error('Code:', err && err.code);
+  console.error('Stack:', err && err.stack);
   process.exit(1);
 });

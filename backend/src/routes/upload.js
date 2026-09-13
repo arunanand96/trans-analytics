@@ -5,7 +5,8 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../db');
 const { detectPdfType } = require('../parsers/detect');
-const { parseWithTemplate } = require('../parsers/textParser');
+const { detectVendor } = require('../parsers/vendorDetect');
+const { parseGeneric } = require('../parsers/genericParser');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -31,14 +32,20 @@ const upload = multer({
 const AUTO_APPROVE_THRESHOLD = 0.85;
 
 router.post('/', requireAuth, upload.single('pdf'), async (req, res) => {
-  const { vendorName } = req.body;
   if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded' });
-  if (!vendorName) return res.status(400).json({ error: 'vendorName is required' });
 
   const client = await pool.connect();
   try {
     const buffer = fs.readFileSync(req.file.path);
     const detection = await detectPdfType(buffer);
+
+    // No manual vendor selection — identify it from the PDF's own text.
+    // Image-based PDFs have no text to detect from; vendor gets set to
+    // "Unknown (image-based)" and resolved later by the AI vision module
+    // or by staff during review.
+    const detectedVendorName =
+      detection.type === 'text' ? detectVendor(detection.text) : null;
+    const vendorName = detectedVendorName || 'Unknown';
 
     // Find or create the vendor row
     const vendorRes = await client.query(
@@ -73,24 +80,13 @@ router.post('/', requireAuth, upload.single('pdf'), async (req, res) => {
       });
     }
 
-    // ── PASS 1 — text-based PDF, parse now, no AI ─────────────────────
-    const parsed = parseWithTemplate(detection.text, vendorName);
-
-    if (!parsed.matched) {
-      // Text exists, but we have no template for this vendor yet.
-      const batchRes = await client.query(
-        `INSERT INTO trip_batches
-           (vendor_id, original_filename, stored_path, extraction_method, review_status, raw_text)
-         VALUES ($1, $2, $3, 'manual', 'pending', $4)
-         RETURNING id`,
-        [vendorId, req.file.originalname, req.file.path, detection.text]
-      );
-      return res.status(202).json({
-        status: 'no_template',
-        message: parsed.reason,
-        batchId: batchRes.rows[0].id,
-      });
-    }
+    // ── PASS 1 — text-based PDF, generic parser, no AI ────────────────
+    // Runs on ANY vendor's text, known or brand-new — no per-vendor code
+    // needed. Confidence score decides what happens next: high enough
+    // auto-approves, otherwise it lands in the review queue where staff
+    // can either hand-correct it or click "Extract with AI" to retry via
+    // Haiku (see POST /api/batches/:id/extract-ai).
+    const parsed = parseGeneric(detection.text);
 
     const reviewStatus = parsed.confidence >= AUTO_APPROVE_THRESHOLD ? 'approved' : 'pending';
     const sourceReliability = reviewStatus === 'approved' ? 'high' : 'needs_review';
@@ -140,6 +136,7 @@ router.post('/', requireAuth, upload.single('pdf'), async (req, res) => {
       extraction_method: 'text',
       review_status: reviewStatus,
       confidence: parsed.confidence,
+      detectedVendor: detectedVendorName,
       passengers_found: parsed.passengers.length,
       batchId,
     });

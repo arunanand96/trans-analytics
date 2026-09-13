@@ -1,17 +1,12 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-// Vendors are created on the fly by the backend, but a dropdown here keeps
-// naming consistent so the same vendor doesn't fragment into "Ashoka" vs
-// "ashoka travels" vs "Ashoka Travel & Logistics".
-const KNOWN_VENDORS = ['Ashoka Travel & Logistics', 'Golden Travel Agencies', 'Kalpaka Travels'];
-
 export default function UploadPdf() {
-  const { auth, logout } = useAuth();
+  const { auth } = useAuth();
   const token = auth?.token;
-  const [vendorName, setVendorName] = useState(KNOWN_VENDORS[0]);
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -26,7 +21,6 @@ export default function UploadPdf() {
 
     const formData = new FormData();
     formData.append('pdf', file);
-    formData.append('vendorName', vendorName);
 
     try {
       const res = await fetch(`${API_BASE}/api/upload`, {
@@ -46,25 +40,11 @@ export default function UploadPdf() {
 
   return (
     <div style={{ maxWidth: 480, margin: '40px auto', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2>Upload booking PDF</h2>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 13, color: '#666' }}>{auth?.user?.email}</div>
-          <button onClick={logout} style={{ fontSize: 12, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0 }}>
-            Log out
-          </button>
-        </div>
-      </div>
+      <h2>Upload booking PDF</h2>
+      <p style={{ color: '#666', fontSize: 14, marginTop: -8 }}>
+        Vendor is detected automatically from the PDF — just upload the file.
+      </p>
       <form onSubmit={handleUpload}>
-        <label>
-          Vendor
-          <select value={vendorName} onChange={(e) => setVendorName(e.target.value)}>
-            {KNOWN_VENDORS.map((v) => (
-              <option key={v} value={v}>{v}</option>
-            ))}
-          </select>
-        </label>
-        <br /><br />
         <input
           type="file"
           accept="application/pdf"
@@ -103,6 +83,11 @@ export default function UploadPdf() {
           <pre style={{ fontSize: 12, marginTop: 8, whiteSpace: 'pre-wrap' }}>
             {JSON.stringify(result, null, 2)}
           </pre>
+          {result.batchId && (
+            <p style={{ marginTop: 8 }}>
+              <Link to={`/review/${result.batchId}`}>Open in Review Queue →</Link>
+            </p>
+          )}
         </div>
       )}
     </div>

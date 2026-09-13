@@ -28,7 +28,7 @@ CREATE TABLE trip_batches (
     original_filename  TEXT NOT NULL,
     stored_path        TEXT NOT NULL,
     -- how this file was (or will be) processed
-    extraction_method  TEXT NOT NULL CHECK (extraction_method IN ('text', 'vision', 'manual', 'pending_ai')),
+    extraction_method  TEXT NOT NULL CHECK (extraction_method IN ('text', 'text_ai', 'vision', 'manual', 'pending_ai')),
     -- did we trust the extraction enough to auto-save, or does staff need to check it?
     review_status      TEXT NOT NULL DEFAULT 'pending' CHECK (review_status IN ('pending', 'approved', 'rejected')),
     confidence_score    NUMERIC(4,3), -- 0.000–1.000, null until scored
